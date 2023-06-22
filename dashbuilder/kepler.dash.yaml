@@ -1,0 +1,813 @@
+properties:
+    ### User properties (you can modify this)
+    prom_url: http://localhost:9090
+    refresh: 30
+    time_window: "[15m:30s]"
+
+    # parameters
+    coal: 2.23
+    petroleum: 2.13
+    natural_gas: 0.91
+
+    namespace: ".*"
+
+    # 1W*s = 1J and 1J = (1/3600000)kWh
+    watt_per_second_to_kWh: 0.000000277777777777778
+
+    # gauges limits
+    gauge_critical: 8
+    gauge_warning: 5
+    gauge_start: 0
+    gauge_end: 10
+
+    cache: false
+    mode: dark.
+
+    ### Internal Properties
+    dataset_url: ${prom_url}/api/v1/query
+global:
+    mode: ${mode}
+    allowUrlProperties: true
+    dataset:
+        url: ${dataset_url}
+        type: prometheus
+        cacheEnabled: ${cache}
+    settings:
+        chart:
+            grid:
+                y: false
+        refresh:
+            interval: ${refresh}
+        meter:
+            critical: ${gauge_critical}
+            warning: ${gauge_warning}
+            start: ${gauge_start}
+            end: ${gauge_end}
+datasets:
+    # Gauges Datasets
+    - uuid: co2Coal
+      query:
+          query: >-
+              (sum(
+                  (increase(kepler_container_package_joules_total{container_namespace=~"${namespace}"}[1h])
+                   *${watt_per_second_to_kWh}
+                  ) *
+                 (count_over_time(kepler_container_package_joules_total{container_namespace=~"${namespace}"}[24h])/
+                    count_over_time(kepler_container_package_joules_total{container_namespace=~"${namespace}"}[1h])
+                 )
+                ) * ${coal}
+              )
+              +
+              (sum(
+                  (increase(kepler_container_dram_joules_total{container_namespace=~"${namespace}"}[1h])
+                   *${watt_per_second_to_kWh}
+                  ) *
+                 (count_over_time(kepler_container_dram_joules_total{container_namespace=~"${namespace}"}[24h])/
+                    count_over_time(kepler_container_dram_joules_total{container_namespace=~"${namespace}"}[1h])
+                 )
+                ) * ${coal}
+              )
+    - uuid: co2Petroleum
+      query:
+          query: >-
+              (sum(
+                  (increase(kepler_container_package_joules_total{container_namespace=~"${namespace}"}[1h])
+                   *${watt_per_second_to_kWh}
+                  ) *
+                 (count_over_time(kepler_container_package_joules_total{container_namespace=~"${namespace}"}[24h])/
+                    count_over_time(kepler_container_package_joules_total{container_namespace=~"${namespace}"}[1h])
+                 )
+                ) * ${petroleum}
+              )
+              +
+              (sum(
+                  (increase(kepler_container_dram_joules_total{container_namespace=~"${namespace}"}[1h])
+                   *${watt_per_second_to_kWh}
+                  ) *
+                 (count_over_time(kepler_container_dram_joules_total{container_namespace=~"${namespace}"}[24h])/
+                    count_over_time(kepler_container_dram_joules_total{container_namespace=~"${namespace}"}[1h])
+                 )
+                ) * ${petroleum}
+              )
+
+    - uuid: co2NaturalGas
+      query:
+          query: >-
+              (sum(
+                  (increase(kepler_container_package_joules_total{container_namespace=~"${namespace}"}[1h])
+                   *${watt_per_second_to_kWh}
+                  ) *
+                 (count_over_time(kepler_container_package_joules_total{container_namespace=~"${namespace}"}[24h])/
+                    count_over_time(kepler_container_package_joules_total{container_namespace=~"${namespace}"}[1h])
+                 )
+                ) * ${natural_gas}
+              )
+              +
+              (sum(
+                  (increase(kepler_container_dram_joules_total{container_namespace=~"${namespace}"}[1h])
+                   *${watt_per_second_to_kWh}
+                  ) *
+                 (count_over_time(kepler_container_dram_joules_total{container_namespace=~"${namespace}"}[24h])/
+                    count_over_time(kepler_container_dram_joules_total{container_namespace=~"${namespace}"}[1h])
+                 )
+                ) * ${natural_gas}
+              )
+    - uuid: gauges
+      join: [co2Petroleum, co2NaturalGas, co2Coal]
+      expression: >-
+          [   
+              "value", 
+              $.($[2] = "co2Petroleum" ? $[1]),
+              $.($[2] = "co2Coal" ? $[1]),
+              $.($[2] = "co2NaturalGas" ? $[1])
+          ]
+      columns:
+          - id: value
+          - id: CO2 Petroleum
+            type: number
+          - id: CO2 Natural Gas
+            type: number
+          - id: CO2 Coal
+            type: number
+    # Total PowerConsumption Bar Chart
+    - uuid: totalPowerConsumption
+      query:
+          query: >-
+              sum by (container_namespace) (
+                    (increase(kepler_container_package_joules_total{container_namespace=~"${namespace}"}[1h])
+                      *${watt_per_second_to_kWh}
+                    ) *
+                    (count_over_time(kepler_container_package_joules_total{container_namespace=~"${namespace}"}[24h])/
+                      count_over_time(kepler_container_package_joules_total{container_namespace=~"${namespace}"}[1h])
+                    )
+                    
+                  )
+                  +
+                  sum by (container_namespace) (
+                    (increase(kepler_container_dram_joules_total{container_namespace=~"${namespace}"}[1h])
+                      *${watt_per_second_to_kWh}
+                    ) *
+                    (count_over_time(kepler_container_dram_joules_total{container_namespace=~"${namespace}"}[24h])/
+                      count_over_time(kepler_container_dram_joules_total{container_namespace=~"${namespace}"}[1h])
+                    )
+                  )
+    # Total Power Consumption By Day
+    - uuid: PKG by Day
+      query:
+          query: >-
+              sum(
+                (increase(kepler_container_package_joules_total{container_namespace=~"${namespace}"}[1h])
+                  *${watt_per_second_to_kWh}
+                ) *
+                (count_over_time(kepler_container_package_joules_total{container_namespace=~"${namespace}"}[24h])/
+                  count_over_time(kepler_container_package_joules_total{container_namespace=~"${namespace}"}[1h])
+                )
+              )${time_window}
+    - uuid: DRAM by Day
+      query:
+          query: >-
+              sum(
+                (increase(kepler_container_dram_joules_total{container_namespace=~"${namespace}"}[1h])
+                  *${watt_per_second_to_kWh}
+                ) *
+                (count_over_time(kepler_container_dram_joules_total{container_namespace=~"${namespace}"}[24h])/
+                  count_over_time(kepler_container_dram_joules_total{container_namespace=~"${namespace}"}[1h])
+                )
+              )${time_window}
+    - uuid: Other by Day
+      query:
+          query: >-
+              sum(
+                (increase(
+                  kepler_container_other_host_components_joules_total{container_namespace=~"${namespace}"}[1h])
+                  *${watt_per_second_to_kWh}
+                ) *
+                (count_over_time(
+                  kepler_container_other_host_components_joules_total{container_namespace=~"${namespace}"}[24h])/
+                  count_over_time(
+                    kepler_container_other_host_components_joules_total{container_namespace=~"${namespace}"}[1h])
+                )
+              )${time_window}
+    - uuid: GPU by Day
+      query:
+          query: >-
+              sum(
+                (increase(kepler_container_gpu_joules_total{container_namespace=~"${namespace}"}[1h])
+                  *${watt_per_second_to_kWh}
+                ) *
+                (count_over_time(kepler_container_gpu_joules_total{container_namespace=~"${namespace}"}[24h])/
+                  count_over_time(kepler_container_gpu_joules_total{container_namespace=~"${namespace}"}[1h])
+                )
+              )${time_window}
+    - uuid: powerConsumptionByDay
+      join:
+          - PKG by Day
+          - DRAM by Day
+          - Other by Day
+          - GPU by Day
+    # Total Power Consumption (W)
+    - uuid: PKG (W)
+      query:
+          query: sum(irate(kepler_container_package_joules_total{container_namespace=~"${namespace}"}[1m]))${time_window}
+    - uuid: DRAM (W)
+      query:
+          query: sum(irate(kepler_container_dram_joules_total{container_namespace=~"${namespace}"}[1m]))${time_window}
+    - uuid: OTHER (W)
+      query:
+          query: sum(irate(kepler_container_other_host_components_joules_total{container_namespace=~"${namespace}"}[1m]))${time_window}
+    - uuid: GPU (W)
+      query:
+          query: sum(irate(kepler_container_gpu_joules_total{container_namespace=~"${namespace}"}[1m]))${time_window}
+    - uuid: totalPowerConsumptionW
+      join:
+          - PKG (W)
+          - DRAM (W)
+          - OTHER (W)
+          - GPU (W)
+    # Power By
+    - uuid: packagesPowerConsumption
+      query:
+          query: >-
+              sum by (pod_name) (irate(kepler_container_package_joules_total{container_namespace=~"${namespace}"}[1m]))${time_window}
+    - uuid: dramPowerConsumption
+      query:
+          query: >-
+              sum by (pod_name) (irate(kepler_container_dram_joules_total{container_namespace=~"${namespace}"}[1m]))${time_window}
+    - uuid: otherPowerConsumption
+      query:
+          query: >-
+              sum by (pod_name) (irate(kepler_container_other_host_joules_total{container_namespace=~"${namespace}"}[1m]))${time_window}
+    - uuid: gpuPowerConsumption
+      query:
+          query: >-
+              sum by (pod_name) (irate(kepler_container_gpu_joules_total{container_namespace=~"${namespace}"}[1m]))${time_window}
+    - uuid: byPowerConsumption
+      expression: >-
+          $.[
+              $[0], 
+              $[2], 
+              $[3] = "packagesPowerConsumption" ? $[1] : "0",
+              $[3] = "dramPowerConsumption" ? $[1] : "0",
+              $[3] = "otherPowerConsumption" ? $[1] : "0",
+              $[3] = "gpuPowerConsumption" ? $[1] : "0"
+          ]
+      join:
+          - packagesPowerConsumption
+          - dramPowerConsumption
+          - otherPowerConsumption
+          - gpuPowerConsumption
+      columns:
+          - id: timestamp
+          - id: Pod Name
+          - id: PKG
+          - id: DRAM
+          - id: OTHER
+          - id: GPU
+
+      ## Aux queries
+    - uuid: namespaces
+      query:
+          query: sum by (container_namespace) (kepler_container_package_joules_total)
+pages:
+    - name: index
+      components:
+          - html: >-
+                <p style="font-size: xx-large; font-weight: bold">
+                    <img src="https://sustainable-computing.io/logo.png" style="width: 80px; height: auto" />
+                    <span style="margin-left: 20px">Kepler Metrics</span>
+                </p>
+                <hr />
+          - panel: Control
+          - panel: Carbon Emissions
+          - panel: Pod/Service Power Consumption
+          - panel: Power Consumption
+          - panel: Total Power Consumption
+    - name: Control
+      components:
+          - settings:
+                type: METRIC
+                html:
+                    html: >-
+                        <div id="${this}" class="form" style= "margin: 10px">
+
+                            <div class="form-group row">
+                                <div class="col-sm-2">
+                                    <label for="${this}SelectNamespace" >Namespace</label>
+                                    <select name="${this}SelectNamespace" id="${this}SelectNamespace" class="form-control"></select>
+                                </div>
+                                
+                                
+                                <div class="col-sm-2">
+                                    <label for="${this}PeriodInput"><span style="margin-right: 5px" class="fa fa-clock-o"></span>Period</label>
+                                    <select name="${this}PeriodInput" id="${this}PeriodInput" class="form-control" value="${petroleum}">
+                                        <option value="[5m:15s]">Last 5 minutes</option>
+                                        <option value="[15m:30s]">Last 15 minutes</option>
+                                        <option value="[1h:1m]">Last 1 hour</option>
+                                        <option value="[6h:10m]">Last 6 hours</option>
+                                        <option value="[12h:30m]">Last 12 hours</option>
+                                        <option value="[24h:1h]">Last 24 hours</option>
+                                        <option value="[48h:2h]">Last 2 days</option>
+                                    </select>
+                                </div>
+                            
+                            
+                            
+                                <div class="col-sm-2">
+                                    <label for="${this}CoalInput" >Coal Coeff</label>
+                                    <input name="${this}CoalInput" id="${this}CoalInput" class="form-control" value="${coal}"></input>
+                                </div>
+                                
+                                
+                                <div class="col-sm-2">
+                                    <label for="${this}NaturalGasInput" >Natural Gas Coeff</label>
+                                    <input name="${this}NaturalGasInput" id="${this}NaturalGasInput" class="form-control" value="${natural_gas}"></input>
+                                </div>
+                                
+                                <div class="col-sm-2">
+                                    <label for="${this}PetroleumInput" >Petroleum Coeff</label>
+                                    <input name="${this}PetroleumInput" id="${this}PetroleumInput" class="form-control" value="${petroleum}"></input>                              
+                                </div>
+                                
+                                <div class="col-sm-1">
+                                    <label for="${this}ModeInput">Mode</label>
+                                    <select name="${this}ModeInput" id="${this}ModeInput" class="form-control" value="${petroleum}">
+                                        <option value="light">Light</option>
+                                        <option value="Dark">Dark</option>
+                                    </select>
+                                </div>
+                            
+                            
+                                <div class="col-sm-1" style="margin-top: 25px">
+                                
+                                <button class="btn btn-primary" id="${this}Update">
+                                    Update
+                                </button>
+                                </div>
+                            </div>
+
+                        </div>
+                    javascript: >-
+                        namespaces = "${value}".split(", ");
+                        namespacesSelect = document.getElementById(${this}.id + "SelectNamespace" );
+
+                        options = [];
+                        option = document.createElement("option");
+                        option.text = "All";
+                        option.value = ".*";
+                        option.selected = option.value === "${namespace}" ? "selected" : "";
+                        options.push(option);
+
+                        namespaces.forEach(v => {
+                            var option = document.createElement("option");
+                            option.text = v;
+                            option.value = v;
+                            option.selected = option.value === "${namespace}" ? "selected" : "";
+                            options.push(option);
+                        });
+                        options.forEach(op => namespacesSelect.appendChild(op));
+
+                        var periodSelect = document.getElementById(${this}.id + "PeriodInput");
+                        var periodOptions = periodSelect.options;
+                        for (var i =0; i < periodOptions.length; i++) {
+                            var op = periodOptions[i];
+                            op.selected = op.value === "${time_window}" ? "selected" : "";
+                        }
+                        var modeSelect = document.getElementById(${this}.id + "ModeInput");
+                        var modeOptions = modeSelect.options;
+                        for (var i =0; i < modeOptions.length; i++) {
+                            var op = modeOptions[i];
+                            op.selected = op.value === "${mode}" ? "selected" : "";
+                        }
+                        
+                        document.getElementById(${this}.id + "Update").onclick = e => {
+
+                          var destination = new URL(window.location.href);
+                          var params = destination.searchParams;
+
+                          params.set("namespace", namespacesSelect.value);
+                          params.set("time_window", periodSelect.value);
+                          params.set("mode", modeSelect.value);
+                          params.set("coal", document.getElementById(${this}.id + "CoalInput").value);
+                          params.set("natural_gas", document.getElementById(${this}.id + "NaturalGasInput").value);
+                          params.set("petroleum", document.getElementById(${this}.id + "PetroleumInput").value);
+                          
+                          console.log(destination.toString());
+                          window.location.href = destination.toString();
+                        };
+                refresh:
+                    interval: -1
+                lookup:
+                    uuid: namespaces
+                    group:
+                        - columnGroup:
+                              source: timestamp
+                          functions:
+                              - source: container_namespace
+                                function: JOIN_COMMA
+    - name: Power Consumption
+      rows:
+          - properties:
+                margin-top: 20px
+            columns:
+                - span: 6
+                  components:
+                      - settings:
+                            type: timeseries
+                            extraConfiguration: >-
+                                {
+                                    "xAxis": {
+                                        "splitNumber": 5
+                                    },
+                                    "toolbox": {
+                                        "feature": {
+                                            "dataZoom": {},
+                                            "magicType": {
+                                                "type": ["line", "bar", "stack"]
+                                            }
+                                        }   
+                                    }
+                                }
+                            general:
+                                title: Total Power Consumption (W)
+                            chart:
+                                resizable: true
+                                zoom: true
+                                legend:
+                                    show: true
+                            lookup:
+                                uuid: totalPowerConsumptionW
+                                group:
+                                    - functions:
+                                          - source: dataset
+                                          - source: timestamp
+                                          - source: value
+                      - properties:
+                            margin-left: 50px
+                            margin-right: 50px
+                        settings:
+                            component: table
+                            external:
+                                height: 170px
+                            table:
+                                hideHeader: true
+                            lookup:
+                                uuid: totalPowerConsumptionW
+                                group:
+                                    - columnGroup:
+                                          source: dataset
+                                      functions:
+                                          - source: dataset
+                                            column: ""
+                                          - source: value
+                                            function: AVERAGE
+                                            column: Mean
+                                          - source: value
+                                            function: MAX
+                                            column: Max
+                - span: 6
+                  components:
+                      - settings:
+                            type: timeseries
+                            extraConfiguration: >-
+                                {
+                                    "xAxis": {
+                                        "splitNumber": 5
+                                    },
+                                    "toolbox": {
+                                        "feature": {
+                                            "dataZoom": {},
+                                            "magicType": {
+                                                "type": ["line", "bar", "stack"]
+                                            }
+                                        }   
+                                    },
+                                    "series": [
+                                            { 
+                                                "type": "line",
+                                                "markLine": {
+                                                    "symbol": "none",
+                                                    "name": "Mean",
+                                                    "data": [
+                                                        { "type": "average"  }
+                                                    ]
+                                                } 
+                                            },
+                                            { 
+                                                "type": "line",
+                                                "markLine": {
+                                                    "symbol": "none",
+                                                    "data": [
+                                                        { "type": "average"}
+                                                    ]
+                                                } 
+                                            }
+                                    ]
+                                }
+                            general:
+                                title: Total Power Consumption (kWh per day)
+                            chart:
+                                resizable: true
+                                zoom: true
+                                legend:
+                                    show: true
+                            lookup:
+                                uuid: powerConsumptionByDay
+                                group:
+                                    - functions:
+                                          - source: dataset
+                                          - source: timestamp
+                                          - source: value
+                      - properties:
+                            margin-left: 50px
+                            margin-right: 50px
+                        settings:
+                            component: table
+                            external:
+                                height: 170px
+                            table:
+                                hideHeader: true
+                            lookup:
+                                uuid: powerConsumptionByDay
+                                group:
+                                    - columnGroup:
+                                          source: dataset
+                                      functions:
+                                          - source: dataset
+                                            column: ""
+                                          - source: value
+                                            function: AVERAGE
+                                            column: Mean
+                                          - source: value
+                                            function: MAX
+                                            column: Max
+    - name: Pod/Service Power Consumption
+      rows:
+          - columns:
+                - properties:
+                      margin: 20px
+                  components:
+                      - properties:
+                            width: 160px
+                        settings:
+                            type: selector
+                            filter:
+                                notification: true
+                            lookup:
+                                uuid: byPowerConsumption
+                                sort:
+                                    - order: ASCENDING
+                                      column: Pod Name
+                                group:
+                                    - columnGroup:
+                                          source: Pod Name
+                                      functions:
+                                          - source: Pod Name
+                      - settings:
+                            type: BARCHART
+                            subtype: AREA_STACKED
+                            extraConfiguration: >-
+                                {
+                                    "series": [{
+                                        "barCategoryGap": "5%",
+                                        "itemStyle": {
+                                            "normal": {
+                                                "label": {
+                                                    "show": true,
+                                                    "position": "inside",
+                                                    "fontSize": 9
+                                                }
+                                            }
+                                        }
+                                    },
+                                    {
+                                        
+                                        "itemStyle": {
+                                            "normal": {
+                                                "label": {
+                                                    "show": true,
+                                                    "position": "inside",
+                                                    "fontSize": 9
+                                                    
+                                                }
+                                            }
+                                        }
+                                    }
+                                    ]
+
+                                }
+                            general:
+                                title: Pod/Service Power Consumption
+                            filter:
+                                listening: true
+                            axis:
+                                x:
+                                    labels_show: false
+                            chart:
+                                resizable: true
+                                grid:
+                                    x: false
+                                    y: false
+                                legend:
+                                    show: true
+                            columns:
+                                - id: timestamp
+                                  expression: new Date(parseInt(value))
+                            lookup:
+                                uuid: byPowerConsumption
+                                group:
+                                    - columnGroup:
+                                          source: timestamp
+                                      functions:
+                                          - source: timestamp
+                                          - source: PKG
+                                            function: SUM
+                                          - source: DRAM
+                                            function: SUM
+                                          - source: OTHER
+                                            function: SUM
+                                            column: OTHER
+                                          - source: GPU
+                                            function: SUM
+    - name: Total Power Consumption
+      rows:
+          - columns:
+                - components:
+                      - properties:
+                            margin-top: 20px
+                        settings:
+                            type: barchart
+                            general:
+                                title: Total Power Consumption (PKG+DRAM) by Namespace (kWh per day)
+                            extraConfiguration: >-
+                                {
+                                    "color": ["lightgreen"],
+                                    "title": {
+                                        "left": 0
+                                    },
+                                    "series": {
+                                        "barCategoryGap": "1%",
+                                        "itemStyle": {
+                                            "normal": {
+                                                "label": {
+                                                    "show": true,
+                                                    "position": "top",
+                                                    "fontSize": 25,
+                                                    "fontWeight": "bold",
+                                                    "color": "darkgreen"
+                                                }
+                                            }
+                                        }
+                                    }
+
+                                }
+                            axis:
+                                y:
+                                    labels_show: false
+                            chart:
+                                resizable: true
+                                height: 380
+                                grid:
+                                    x: false
+                                    y: false
+                                margin:
+                                    top: 100
+                            columns:
+                                - id: value
+                                  expression: >-
+                                      new Number(value).toFixed(4)
+                            lookup:
+                                uuid: totalPowerConsumption
+                                group:
+                                    - columnGroup:
+                                          source: container_namespace
+                                      groupFunctions:
+                                          - source: container_namespace
+                                          - source: value
+    - name: Carbon Emissions
+      properties:
+          margin: 10px
+      rows:
+          - columns:
+                - components:
+                      - markdown: >-
+                            ##### Carbon Footprint (pounds per kWh per day) in Namespace: All (PKG+DRAM)
+
+                            <hr />
+          - properties:
+                margin-left: 50px
+                margin-right: 50px
+            columns:
+                - span: 4
+                  components:
+                      - settings:
+                            type: meterchart
+                            extraConfiguration: >-
+                                {
+                                    "tooltip": {
+                                        "formatter": "{c}"
+                                    },
+                                    "title": {
+                                        "top": "0"
+                                    },
+                                    "series": [{
+                                        "center": ["50%", "90%"],
+                                        "detail": {
+                                            "show": true,
+                                            "fontSize": 25,
+                                            "formatter":"{value}\n\n\n\n\n",
+                                            "padding": [0,0,0,300],
+                                            "color": ""
+                                        }
+                                    }]
+                                }
+                            chart:
+                                resizable: true
+                                height: 200
+                            general:
+                                title: CO2 Coal
+                            columns:
+                                - id: CO2 Coal
+                                  expression: new Number(value).toFixed(4)
+                            lookup:
+                                uuid: gauges
+                                group:
+                                    - functions:
+                                          - source: value
+                                          - source: CO2 Coal
+                - span: 4
+                  components:
+                      - settings:
+                            type: meterchart
+                            extraConfiguration: >-
+                                {
+                                    "tooltip": {
+                                        "formatter": "{c}"
+                                    },
+                                    "title": {
+                                        "top": 0
+                                    },
+                                    "grid": {
+                                        "top": 100
+                                    },
+                                    "series": [{
+                                            "center": ["50%", "90%"],
+                                            "detail": {
+                                                "show": true,
+                                                "fontSize": 25,
+                                                "formatter":"{value}\n\n\n\n\n",
+                                                "padding": [0,0,0,300],
+                                                "color": ""
+                                            }
+                                    }]
+                                }
+                            chart:
+                                resizable: true
+                                height: 200
+                            general:
+                                title: CO2 Petroleum
+                            columns:
+                                - id: CO2 Petroleum
+                                  expression: new Number(value).toFixed(4)
+                            lookup:
+                                uuid: gauges
+                                group:
+                                    - functions:
+                                          - source: value
+                                          - source: CO2 Petroleum
+                - span: 4
+                  components:
+                      - settings:
+                            type: meterchart
+                            extraConfiguration: >-
+                                {
+                                    "tooltip": {
+                                        "formatter": "{c}"
+                                    },
+                                    "title": {
+                                        "top": "0"
+                                    },
+                                    "series": [{
+                                        "center": ["50%", "90%"],
+                                        "detail": {
+                                            "show": true,
+                                            "fontSize": 25,
+                                            "formatter":"{value}\n\n\n\n\n",
+                                            "padding": [0,0,0,300],
+                                            "color": ""
+                                        }
+                                    }]
+                                }
+                            chart:
+                                resizable: true
+                                height: 200
+                            general:
+                                title: CO2 Natural Gas
+                            columns:
+                                - id: CO2 Natural Gas
+                                  expression: new Number(value).toFixed(4)
+                            lookup:
+                                uuid: gauges
+                                group:
+                                    - functions:
+                                          - source: value
+                                          - source: CO2 Natural Gas
